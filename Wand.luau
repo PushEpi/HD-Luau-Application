@@ -1,4 +1,8 @@
--- Magic Wand Script(s), Contains both the server and local scripts (each of which is marked), but kept in one file to comply with application guidelines (my bad on that first attempt, new to github)
+-- Magic Wand Demo, Niveum, 2025
+-- This file contains the code for both the server and local scripts (each of which is marked below), but are kept in one file to comply with application guidelines (my bad on that first attempt)
+-- The Server Script (lines 8 - 232) is 215 lines of code when ignoring comments, blank lines, & closing bracket lines for table closures
+-- The Local Script (lines 236 - 337) was included for completeness (rather than to meet line requirements).
+
 ----------{{ SERVER SCRIPT }}----------
 --// Variables \\--
 local tool:Tool = script.Parent
@@ -13,7 +17,7 @@ local currentColor = 0 -- Placeholder, colorTable
 local distanceInterval = 10 -- Distance the spell travels
 local params = RaycastParams.new()
 params.FilterType = Enum.RaycastFilterType.Include
-params.FilterDescendantsInstances = {workspace.Detect}
+params.FilterDescendantsInstances = {workspace.Detect} -- For purposes of demo, only detect items in the designated folder
 local spellColors = { -- Choose a random color for the spell to add some visual variability
 	["Freeze"] = {BrickColor.new("Bright blue"), BrickColor.new("Cyan"), BrickColor.new("Really blue")};
 	["Bleed"] = {BrickColor.new("Bright red"), BrickColor.new("Really red"), BrickColor.new("Persimmon")};
@@ -21,30 +25,30 @@ local spellColors = { -- Choose a random color for the spell to add some visual 
 	["Explode"] = {BrickColor.new("New Yeller"),BrickColor.new("Brick yellow"),BrickColor.new("Bright orange")};
 	["Decapitate"] = {BrickColor.new("Hot pink"),BrickColor.new("Light pink"),BrickColor.new("Carnation pink")};
 }
-local fxTable = { 	-- Regular function table for casting vs changing spells, assign memory now as mini-optimization
+local fxTable = { 	-- Table that will hold casting & changing functions to use in conjunction with wrapper function that handles remote events
 	["castSpell"] = 0;
 	["changeSpell"] = 0;
 }
 local attachmentTable = setmetatable({}, {__newindex = function(self, index:number, value:BasePart) -- Table to keep track of decapitated heads. __newindex to serve as a "table.added" event 
 	if index == 1 then -- Our fist time adding a head via the decapitate spell, need to setup the spinner 
-		local spinPart:BasePart = Instance.new("Part",workspace) spinPart.Name = player.Name.."'s Spinner" -- Create our spinner base
+		local spinPart:BasePart = Instance.new("Part",workspace) spinPart.Name = player.Name.."'s Spinner" -- Create spinner part
 		spinPart.CanCollide = false
 		spinPart.Transparency = 1
 		spinPart.Massless = true
 		spinPart.Size = Vector3.new(1,1,1)
-		local weld:Weld = Instance.new("Weld",spinPart) -- Using a clasic Weld as WeldConstraint doesnt have C0 and C1
+		local weld:Weld = Instance.new("Weld",spinPart) -- Weld to character
 		weld.Part0 = char.HumanoidRootPart
 		weld.Part1 = spinPart
-		local spinCoro = coroutine.create(function()
+		local spinCoro = coroutine.create(function() -- Create coroutine
 			while true do task.wait()
 				weld.C0 *= CFrame.Angles(0,math.rad(0.5),0)
 			end
 		end)
-		char.Humanoid.Died:Once(function() -- Cleanup on death
-			coroutine.close(spinCoro)
-			self = nil
+		char.Humanoid.Died:Once(function() -- Player dies
+			coroutine.close(spinCoro) -- Close out our coroutine
+			self = nil -- Remove attachment table
 		end)
-		coroutine.resume(spinCoro)
+		coroutine.resume(spinCoro) -- Start coroutine
 		rawset(self,index,spinPart) -- Allows indexing of the spinner without relying on its worldtree position in a character
 		local newAttachment = Instance.new("Attachment",spinPart) -- New Attachment pareneted to spinner 
 		rawset(self,index+1,newAttachment) -- Add our first attachment after the spinner index
@@ -59,72 +63,86 @@ local attachmentTable = setmetatable({}, {__newindex = function(self, index:numb
 	alignPosition.Mode = Enum.PositionAlignmentMode.TwoAttachment -- Default but just to be safe
 	alignPosition.Attachment0 = headAttachment
 	alignPosition.Attachment1 = referenceAttachemnt
-	alignPosition.RigidityEnabled = false -- For now
+	alignPosition.RigidityEnabled = false
 	alignPosition.ForceLimitMode = Enum.ForceLimitMode.PerAxis
 	alignPosition.MaxForce = value:GetMass() * workspace.Gravity
-	alignPosition.MaxVelocity = 0 -- Make it float for the moment
+	alignPosition.MaxVelocity = 0 -- Start by floating
 	local alignOrientation:AlignOrientation = Instance.new("AlignOrientation",value)
 	alignOrientation.Mode = Enum.OrientationAlignmentMode.TwoAttachment -- Again, just to ensure
 	alignOrientation.Attachment0 = headAttachment
 	alignOrientation.Attachment1 = referenceAttachemnt
-	alignOrientation.AlignType = Enum.AlignType.AllAxes
+	alignOrientation.AlignType = Enum.AlignType.PrimaryAxisLookAt -- Looks at its target attachemnt as it floats towards it, makes it look like it knows where it going
 	alignOrientation.RigidityEnabled = false
 	alignOrientation.MaxAngularVelocity = 0
-	-- Set attachment offsets
+	-- Update attachment offsets
+	local numAttachments:number = (#self)-1 -- Reference to avoid repeat calls of '#self'
 	for ind:number, attachment:Attachment in pairs(self) do
 		if ind == 1 then continue end -- Ignore the spinner
-		attachment.CFrame = CFrame.Angles(0,math.rad( (ind-1)*(360/(#self-1)) ),0) * CFrame.new(0,0,-10)
+		attachment.CFrame = CFrame.Angles(0,math.rad( (ind-1)*(360/(#self-1)) ),0) * CFrame.new(0,0,-(6+(numAttachments)))
 	end
-	alignPosition.MaxVelocity = math.huge
+	alignPosition.MaxVelocity = math.huge -- Move as fast MaxForce can allow for
 	coroutine.wrap(function()
-		repeat task.wait(0.1) until (headAttachment.WorldPosition - referenceAttachemnt.WorldPosition).Magnitude < 10
+		repeat task.wait(0.1) until (headAttachment.WorldPosition - referenceAttachemnt.WorldPosition).Magnitude < 10 -- Wait until we get close
+		alignOrientation.AlignType = Enum.AlignType.AllAxes -- Causes the head to twist into place
 		alignOrientation.RigidityEnabled = true
 	end)()
 end,})
 
 --// Spell Functions \\--
 local spellTable = { 
-	["Freeze"] = function(obj:Model) -- Freeze function, gets the size of the target, welds them to the ice block. Block is heavy but can move as a real ice block would
+	["Freeze"] = function(obj:Model) -- Freeze function, gets the size of the target, creates ice block of larger size, welds iceblock to target.
 		if not obj:FindFirstChild("Humanoid") then return end
 		local v0 = obj:GetExtentsSize()
 		local iceBlock = Instance.new("Part",workspace)
 		iceBlock.Size = v0 + Vector3.new(2,2,2)
 		iceBlock.Transparency = 0.5 
-		iceBlock.Material = Enum.Material.Ice -- Adjusts the the physical properties 
+		iceBlock.Material = Enum.Material.Ice -- Bonus of applying the physical properties of ice 
 		iceBlock.BrickColor = BrickColor.Blue()
 		local weld = Instance.new("WeldConstraint", iceBlock) 
 		weld.Part0 = obj.PrimaryPart 
 		weld.Part1 = iceBlock
-		iceBlock.Position = obj.PrimaryPart.Position -- Last, only set Position not CFrame
-		game.Debris:AddItem(iceBlock, 5)
+		iceBlock.Position = obj.PrimaryPart.Position -- Set position to update only the iceblocks offset
+		game.Debris:AddItem(iceBlock, 5) -- Cleanup after 5 seconds
 	end;
-	["Bleed"] = function(obj:Model) -- Bleed function, causes incremental decrease in health over time, TakeDamage to account for forcefields
+	["Bleed"] = function(obj:Model) -- Bleed function, causes incremental decrease in health over time,
 		if not obj:FindFirstChild("Humanoid") then return end
-		coroutine.wrap(function()
+		local bleedCoro = coroutine.create(function()
 			for i = 1, math.random(60,120) do task.wait(0.33) -- Might kill them, might not
 				obj.Humanoid:TakeDamage(1)
 			end
-		end)()
+		end)
+		obj.Humanoid.Died:Once(function() -- Early exit's the for loop + avoids the 'humanoid not found' error when they respawn
+			coroutine.close(bleedCoro)
+		end)
+		coroutine.resume(bleedCoro)
 	end;
 	["Kill"] = function(obj:Model) -- Applies infinite damage, utilizes TakeDamage to account for forcefields
 		if not obj:FindFirstChild("Humanoid") then return end
 		obj.Humanoid:TakeDamage(math.huge)
 	end;
-	["Explode"] = function(obj:Model, v1:Vector3) -- Projectile explodes on contact. Takes advantage of the .Hit event to avoid killing the caster
-		local ex = Instance.new("Explosion") ex.BlastRadius = 5 ex.BlastPressure = 0 -- Settings so we can ignore our own self
-		ex.Hit:Connect(function(part: BasePart, distance: number)
-			if part:IsDescendantOf(player.Character) then return end
-			if part.Name == "Head" then part:Destroy() end -- Kill them, I miss BreakJoints()
-			part:ApplyImpulse((part.Position - ex.Position) * part.AssemblyMass * math.random(50,100)) -- Fling, Partmass * Velocity, ignore gravity
+	["Explode"] = function(obj:Model, v1:Vector3) -- Projectile which explodes on contact, 
+		local explosion:Explosion = Instance.new("Explosion") 
+		explosion.BlastRadius = 15 
+		explosion.BlastPressure = 0
+		explosion.Hit:Connect(function(part: BasePart, distance: number) -- Uses hit to avoid killin the caster 
+			if part:IsDescendantOf(player.Character) then return end -- Ignore caster 
+			if part.Parent:FindFirstChild("Humanoid") then 
+				part.Parent.Humanoid:TakeDamage(math.huge)
+			end
+			if part:HasTag("Destroyable") then -- For the destroyable brick wall in the demo game so it can repair
+				part.Anchored = false
+			end
+			part:ApplyImpulse(part.AssemblyMass * ((part.Position - explosion.Position).Unit * math.random(50,100))) -- Fling = Partmass * VelocityVector, ignore gravity so parts back down
 		end)
-		ex.Position = v1
-		ex.Parent = workspace -- Parent last for the finished product
+		explosion.Position = v1
+		explosion.Parent = workspace -- Parent last for the finished product
 	end,
 	["Decapitate"] = function(obj:Model) -- Behead the target and keep it as a pet / trophy
 		if not obj:FindFirstChild("Humanoid") or not obj:FindFirstChild("Head") then return end
 		local head:BasePart = obj.Head -- Check for head
 		obj.Archivable = true -- For player characters
 		local newHead = obj.Head:Clone() -- Recreate the head (the existing one will despawn with the target)
+		newHead.Name = "DecapitatedHead" -- Leaving it named Head will allow the explode spell to delete it 
 		for ind:number, obj:Instance in pairs(newHead:GetChildren()) do
 			if obj:IsA("Attachment") then -- Clean up the head
 				obj:Destroy()
@@ -148,27 +166,26 @@ local spellTable = {
 		attachmentTable[#attachmentTable+1] = newHead -- Fires __newindex and will handle the welding
 	end,
 }
-currentSpell = spellTable.Freeze -- Assign after the spells are defined
-currentColor = spellColors["Freeze"]
+currentSpell = spellTable.Freeze -- Assign function once defined
+currentColor = spellColors["Freeze"] -- Keep color consistent with function
 
-fxTable.castSpell = function(player:Player, v1:Vector3) -- Projectile function
-	local c0:CFrame = CFrame.new(castOrigin.WorldPosition, v1) -- Wand position
-	local projectile:BasePart = Instance.new("Part",workspace) -- Projectile
+fxTable.castSpell = function(player:Player, v1:Vector3) -- Cast function
+	local c0:CFrame = CFrame.new(castOrigin.WorldPosition, v1)
+	local projectile:BasePart = Instance.new("Part",workspace)
 	projectile.Anchored = true
 	projectile.Size = Vector3.one
 	projectile.CFrame = c0
 	projectile.Transparency = 0.5
-	projectile.Color = currentColor[math.random(1,#currentColor)].Color -- Assign a random color from the preset color tables
+	projectile.Color = currentColor[math.random(1,#currentColor)].Color
 	projectile.Material = Enum.Material.Neon
-	local specialMesh:SpecialMesh = Instance.new("SpecialMesh",projectile) -- Special mesh to make bullet appearance while still getting the Neon material effect
+	local specialMesh:SpecialMesh = Instance.new("SpecialMesh",projectile)
 	specialMesh.MeshType = Enum.MeshType.Sphere
 	specialMesh.Scale = Vector3.new(0.5,0.5,3)
-	local attachment0:Attachment = Instance.new("Attachment", projectile) -- Attachment0 for trail effect
+	local attachment0:Attachment = Instance.new("Attachment", projectile) 
 	attachment0.Position = Vector3.new(1,0,0)
-	local attachment1:Attachment = attachment0:Clone() -- Attachment1 for trail effect
-  attachment1.Parent = projectile 
+	local attachment1:Attachment = attachment0:Clone() attachment1.Parent = projectile 
 	attachment1.Position = Vector3.new(-1,0,0)
-	local trail:Trail = Instance.new("Trail", projectile) -- Trail effect for projectile
+	local trail:Trail = Instance.new("Trail", projectile) 
 	trail.Attachment0 = attachment0 
 	trail.Attachment1 = attachment1 
 	trail.TextureMode = Enum.TextureMode.Stretch
@@ -179,37 +196,37 @@ fxTable.castSpell = function(player:Player, v1:Vector3) -- Projectile function
 	trail.Transparency = NumberSequence.new(0,1)
 	trail.Color = ColorSequence.new(projectile.Color)
 	trail.LightInfluence = 0
-	for i = 0, 300, distanceInterval do task.wait(0.025) -- For loop to make the projectile move and do hit detection
-		local rayResult:RaycastResult = workspace:Raycast(c0.Position, c0.LookVector*distanceInterval, params) -- Check for a hit
-		if rayResult then -- Target acquired
-			projectile.PivotOffset = CFrame.identity -- Remove any pivotoffset we had
-			projectile:PivotTo(CFrame.new(rayResult.Position)) -- CFrame to hit position
-			currentSpell(rayResult.Instance.Parent, rayResult.Position) -- Call the equipped spell. (Note: Humanoid checks are done in each  spell function so we dont have to create a bunch of if/elseif's here)
-			break -- All done
-		else -- Didnt hit anything
-			c0 *= CFrame.new(0,0,-distanceInterval) -- Move forward by the desired distance
-			projectile.PivotOffset = CFrame.new(math.random(-1,1),math.random(-1,1),0) * CFrame.Angles(0,0,math.rad(i*6)) -- Assign a pivot offset to make the spell look 'chaotic' rather than a laser beam
-			projectile:PivotTo(c0) -- Update our CFrame, needs to use PivotTo to apply the PivotOffset
+	for i = 0, 300, distanceInterval do task.wait(0.025)
+		local rayResult:RaycastResult = workspace:Raycast(c0.Position, c0.LookVector*distanceInterval, params)
+		if rayResult then
+			projectile.PivotOffset = CFrame.identity
+			projectile:PivotTo(CFrame.new(rayResult.Position))
+			currentSpell(rayResult.Instance.Parent, rayResult.Position) -- Humanoid check done in the spell function so we dont have to create a bunch of if/elseif's here
+			break
+		else
+			c0 *= CFrame.new(0,0,-distanceInterval)
+			projectile.PivotOffset = CFrame.new(math.random(-1,1),math.random(-1,1),0) * CFrame.Angles(0,0,math.rad(i*6))
+			projectile:PivotTo(c0)
 		end
 	end
-	projectile:Destroy() -- Cleanup
+	projectile:Destroy()
 end
 
 fxTable.changeSpell = function(player:Player, newSpell:string) -- Change selected spell
-	for name:string, fx in pairs(spellTable) do -- Loop through spells
-		if name == newSpell then -- Spell we're equipping
-			currentSpell = fx -- Spell fx
-			currentColor = spellColors[name] -- Color table
-			break -- Early exit once we find it
+	for name:string, fx in pairs(spellTable) do
+		if name == newSpell then
+			currentSpell = fx
+			currentColor = spellColors[name]
+			break
 		end
 	end
 end
 
 --// Connections \\--
 remote.OnServerEvent:Connect(function(player:Player, fxName:string, ...:any)
-	if fxTable[fxName] then -- If our function exists
+	if fxTable[fxName] then -- Cant use variadics with pcall so we get left with an if-else check
 		fxTable[fxName](player, ...)
-	else -- Tried to call a function that doesnt exist, exploit detected
+	else -- Tried to call a function that doesn't exist, exploit detected
 		player:Kick("Exploiting? In this economy? That's craaaaazy") 
 	end
 end)
@@ -266,7 +283,7 @@ local function partyMode(name:string, userInputState:Enum.UserInputState, inputO
 			tool.Handle.PointLight.Color = color.Color
 			tool.Handle.PointLight.Range += lightdelta -- Grow / shrink our light range to give it a 'pulsing' effect of sorts
 			if tool.Handle.PointLight.Range >= 20 or tool.Handle.PointLight.Range <= 8 then -- When we reach an upper or lower limit on light size
-				lightdelta *= -1 -- Flip the sign
+				lightdelta *= -1 -- Flip the sign to switch grow <--> shrink
 			end
 			colordelta += 1 -- Next color
 			if colordelta >= #colors then -- Out of colors?
@@ -318,7 +335,6 @@ local function unequipTool()
 		cnx:Disconnect() -- Disconnect buttons. Another theoretical anti-cheat so you cant change spells without having the wand equipped
 	end
 end
-
 --// Connections \\--
 cas.LocalToolEquipped:Connect(equipTool) -- Bind equipTool
 cas.LocalToolUnequipped:Connect(unequipTool) -- Bind unequipTool
