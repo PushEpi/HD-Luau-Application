@@ -1,6 +1,6 @@
 -- Magic Wand Demo, Niveum, 2025
 -- This file contains the code for both the server and local scripts (each of which is marked below), but are kept in one file to comply with application guidelines (my bad on that first attempt)
--- The Server Script (lines 8 - 233) is 215 lines of code when ignoring comments, blank lines, & closing bracket lines for table closures
+-- The Server Script (lines 8 - 231) is 214 lines of code when ignoring comments, blank lines, & closing bracket lines
 -- The Local Script (lines 237 - 341) was included for completeness (rather than to meet line requirements).
 
 ----------{{ SERVER SCRIPT }}----------
@@ -25,11 +25,11 @@ local spellColors = { -- Choose a random color for the spell to add some visual 
 	["Explode"] = {BrickColor.new("New Yeller"),BrickColor.new("Brick yellow"),BrickColor.new("Bright orange")};
 	["Decapitate"] = {BrickColor.new("Hot pink"),BrickColor.new("Light pink"),BrickColor.new("Carnation pink")};
 }
-local fxTable = { 	-- Table that will hold casting & changing functions to use in conjunction with wrapper function that handles remote events
+local fxTable = { -- Table that will hold casting & changing functions to use in conjunction with wrapper function that handles remote events. Defined here w/ variables to allocate memory early as a micro-optimization
 	["castSpell"] = 0;
 	["changeSpell"] = 0;
 }
-local attachmentTable = setmetatable({}, {__newindex = function(self, index:number, value:BasePart) -- Table to keep track of decapitated heads. __newindex to serve as a "table.added" event 
+local attachmentTable = setmetatable({}, {__newindex = function(self, index:number, value:BasePart) -- Table to keep track of decapitation attachments,  __newindex to serve as a "table.added" event to utilize metamethods in demo, and also easier on script organization
 	if index == 1 then -- Our fist time adding an attachment via the decapitate spell, need to setup the spinner 
 		local spinPart:BasePart = Instance.new("Part",workspace) spinPart.Name = player.Name.."'s Spinner" -- Create spinner part
 		spinPart.CanCollide = false
@@ -59,7 +59,7 @@ local attachmentTable = setmetatable({}, {__newindex = function(self, index:numb
 	-- Setup attachments and constraints for the acquisition effect
 	local headAttachment:Attachment = Instance.new("Attachment",value) -- Attachment in the head
 	local referenceAttachemnt:Attachment = (self[index]:IsA("Attachment")) and self[index] or self[index+1] -- The attachment we just added to the table, have to account for whether self[index] is the spinner or not on first run
-	local alignPosition:AlignPosition = Instance.new("AlignPosition",value)
+	local alignPosition:AlignPosition = Instance.new("AlignPosition",value) -- Using align position rather than a weld as it creates a 'float' effect. 
 	alignPosition.Mode = Enum.PositionAlignmentMode.TwoAttachment -- Default but just to be safe
 	alignPosition.Attachment0 = headAttachment
 	alignPosition.Attachment1 = referenceAttachemnt
@@ -78,13 +78,13 @@ local attachmentTable = setmetatable({}, {__newindex = function(self, index:numb
 	local numAttachments:number = (#self)-1 -- Reference to avoid repeat calls of '#self'
 	for ind:number, attachment:Attachment in pairs(self) do
 		if ind == 1 then continue end -- Ignore the spinner
-		attachment.CFrame = CFrame.Angles(0,math.rad( (ind-1)*(360/(#self-1)) ),0) * CFrame.new(0,0,-(6+(numAttachments)))
+		attachment.CFrame = CFrame.Angles(0, math.rad((ind-1)*(360/(numAttachments))), 0) * CFrame.new(0, 0, -6 - numAttachments) -- Equally divide into circle, and space outwards as we add more heads
 	end
 	alignPosition.MaxVelocity = math.huge -- Move as fast MaxForce can allow for
-	coroutine.wrap(function()
+	coroutine.wrap(function() -- Coroutine to make a new thread because __newindex cant/shouldnt yield, but its needed for the effect to look right 
 		repeat task.wait(0.1) until (headAttachment.WorldPosition - referenceAttachemnt.WorldPosition).Magnitude < 10 -- Wait until we get close
 		alignOrientation.AlignType = Enum.AlignType.AllAxes -- Causes the head to twist into place
-		alignOrientation.RigidityEnabled = true
+		alignOrientation.RigidityEnabled = true -- Stay as alinged as possible now
 	end)()
 end,})
 
@@ -127,12 +127,12 @@ local spellTable = {
 		explosion.Hit:Connect(function(part: BasePart, distance: number) -- Uses hit to avoid killin the caster 
 			if part:IsDescendantOf(player.Character) then return end -- Ignore caster 
 			if part.Parent:FindFirstChild("Humanoid") then 
-				part.Parent.Humanoid:TakeDamage(math.huge)
+				part.Parent.Humanoid:TakeDamage(math.huge) -- Explosions 1 shot for now
 			end
-			if part:HasTag("Destroyable") then -- For the destroyable brick wall in the demo game so it can repair
+			if part:HasTag("Destroyable") then -- For the destroyable brick wall in the demo game as part of its self-repairing feature
 				part.Anchored = false
 			end
-			part:ApplyImpulse(part.AssemblyMass * ((part.Position - explosion.Position).Unit * math.random(50,100))) -- Fling = Partmass * VelocityVector, ignore gravity so parts back down
+			part:ApplyImpulse(part.AssemblyMass * ((part.Position - explosion.Position).Unit * math.random(50,100))) -- Fling = Partmass * VelocityVector, ignore gravity so parts can come down
 		end)
 		explosion.Position = v1
 		explosion.Parent = workspace -- Parent last for the finished product
@@ -140,9 +140,7 @@ local spellTable = {
 	["Decapitate"] = function(obj:Model) -- Behead the target and keep it as a pet / trophy
 		if not obj:FindFirstChild("Humanoid") or not obj:FindFirstChild("Head") then return end
 		local head:BasePart = obj.Head -- Check for head
-		obj.Archivable = true -- For player characters
 		local newHead = obj.Head:Clone() -- Recreate the head (the existing one will despawn with the target)
-		newHead.Name = "DecapitatedHead" -- Leaving it named Head will allow the explode spell to delete it 
 		for ind:number, obj:Instance in pairs(newHead:GetChildren()) do
 			if obj:IsA("Attachment") then -- Clean up the head
 				obj:Destroy()
@@ -166,8 +164,8 @@ local spellTable = {
 		attachmentTable[#attachmentTable+1] = newHead -- Fires __newindex and will handle the welding
 	end,
 }
-currentSpell = spellTable.Freeze -- Assign function once defined
-currentColor = spellColors["Freeze"] -- Keep color consistent with function
+currentSpell = spellTable.Freeze -- Assign function now that its defined
+currentColor = spellColors["Freeze"] -- Keep color consistent with equipped spell
 
 fxTable.castSpell = function(player:Player, v1:Vector3) -- Cast function
 	local c0:CFrame = CFrame.new(castOrigin.WorldPosition, v1) -- Wand position in global space
@@ -218,7 +216,7 @@ fxTable.changeSpell = function(player:Player, newSpell:string) -- Change selecte
 		if name == newSpell then -- Found the spell we're tring to select
 			currentSpell = fx -- set it as the equipped spell
 			currentColor = spellColors[name] -- update our projectile colors
-			break -- early exit once we found it
+			break -- early exit
 		end
 	end
 end
@@ -247,7 +245,7 @@ local castDebounce:boolean = false
 local changeDebounce:boolean = false
 local cnxTable:{} = {} -- Table that will hold our GuiButton connections
 local partying = false
-local colors = { -- Rainbow colors for partymode, formatted for visiblity
+local colors = { -- Rainbow colors for partymode, formatted for visiblity rather than line requirement
 	BrickColor.new("Bright red"), 
 	BrickColor.new("Bright orange"), 
 	BrickColor.new("Bright yellow"), 
@@ -257,8 +255,9 @@ local colors = { -- Rainbow colors for partymode, formatted for visiblity
 	BrickColor.new("Bright violet"),
 }
 
---// Tool Functions\\--
--- Tool activated, fires the remote to the server with the mouse position as the target
+--// Tool Functions \\--
+
+-- Tool activated, fires the remote to the server with the mouse position for aiming
 local function activateTool(name:string, userInputState:Enum.UserInputState, inputObject:InputObject) 
 	if userInputState ~= Enum.UserInputState.Begin then return end -- Only fire on mouse down
 	if castDebounce then return end -- Debounce
@@ -267,7 +266,7 @@ local function activateTool(name:string, userInputState:Enum.UserInputState, inp
 	task.delay(1, function() castDebounce = false end) -- Cooldown
 end
 
--- Party mode, enables disco lighting for fun (only evokes changes on client). 
+-- Party mode, enables disco lighting for fun (local effect). 
 local function partyMode(name:string, userInputState:Enum.UserInputState, inputOject:InputObject)
 	if userInputState ~= Enum.UserInputState.Begin then return end -- Only register the keydown input
 	if partying then -- Already on -> turn off
@@ -304,12 +303,12 @@ local function equipTool(tool:Tool)
 	for index:number, txtBtn:TextButton in pairs(spellGui.Frame:GetChildren()) do
 		if not txtBtn:IsA("TextButton") then continue end -- Ignore non-TextButtons
 		table.insert(cnxTable, txtBtn.MouseButton1Down:Connect(function() -- Add our connection using table.insert as its optimized
-			if changeDebounce then -- Debounce
-				print('Spell change on cooldown') 
+			if changeDebounce then -- Debounce to avoid normal players from spamming remote:FireServer()
+				print('Spell change on cooldown') -- Local so may as well let the client see why they cant spam change if they open the dev console
 				return 
 			end
 			changeDebounce = true
-			remote:FireServer('changeSpell', txtBtn.Name) -- Fire the remote to tell the server what spell were casting. Would be useful as an anti-cheat in a full game w/ more spells that need unlocking
+			remote:FireServer('changeSpell', txtBtn.Name) -- Fire the remote to tell the server what spell to equip. Theoretically useful as an anti-cheat in a full game with more spells that need unlocking vs letting the client keep track
 			for index2:number, txtBtn2:TextButton in pairs(spellGui.Frame:GetChildren()) do -- Do another loop to Update our buttons textcolors so we can show a change in equip status
 				if txtBtn == txtBtn2 then -- Textbutton we just selected
 					txtBtn2.TextColor3 = BrickColor.Yellow().Color
@@ -322,9 +321,9 @@ local function equipTool(tool:Tool)
 			end)
 		end)) -- Close table.insert 
 	end
-	spellGui.Enabled = true -- Turn on our spell menu
+	spellGui.Enabled = true -- Make our spell menu visible
 	cas:BindAction("ClickToCast", activateTool, false, Enum.UserInputType.MouseButton1) -- Enable activate-on-mouse-click
-	cas:BindAction("Party",partyMode,false,Enum.KeyCode.Q) -- Enable party mode keybind
+	cas:BindAction("Party",partyMode,false,Enum.KeyCode.Q) -- Enable party-mode-keybind
 end
 
 -- Unequip tool, unbinds our CAS functions and removes connections for the GuiButtons
