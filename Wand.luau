@@ -30,7 +30,7 @@ local fxTable = { 	-- Table that will hold casting & changing functions to use i
 	["changeSpell"] = 0;
 }
 local attachmentTable = setmetatable({}, {__newindex = function(self, index:number, value:BasePart) -- Table to keep track of decapitated heads. __newindex to serve as a "table.added" event 
-	if index == 1 then -- Our fist time adding a head via the decapitate spell, need to setup the spinner 
+	if index == 1 then -- Our fist time adding an attachment via the decapitate spell, need to setup the spinner 
 		local spinPart:BasePart = Instance.new("Part",workspace) spinPart.Name = player.Name.."'s Spinner" -- Create spinner part
 		spinPart.CanCollide = false
 		spinPart.Transparency = 1
@@ -170,22 +170,23 @@ currentSpell = spellTable.Freeze -- Assign function once defined
 currentColor = spellColors["Freeze"] -- Keep color consistent with function
 
 fxTable.castSpell = function(player:Player, v1:Vector3) -- Cast function
-	local c0:CFrame = CFrame.new(castOrigin.WorldPosition, v1)
-	local projectile:BasePart = Instance.new("Part",workspace)
+	local c0:CFrame = CFrame.new(castOrigin.WorldPosition, v1) -- Wand position in global space
+	local projectile:BasePart = Instance.new("Part",workspace) -- Spell projectile
 	projectile.Anchored = true
 	projectile.Size = Vector3.one
 	projectile.CFrame = c0
 	projectile.Transparency = 0.5
 	projectile.Color = currentColor[math.random(1,#currentColor)].Color
 	projectile.Material = Enum.Material.Neon
-	local specialMesh:SpecialMesh = Instance.new("SpecialMesh",projectile)
+	local specialMesh:SpecialMesh = Instance.new("SpecialMesh",projectile) -- Use Special mesh to make it more bullet-shaped while still rendering as the Neon material (Shape seems to have issues with this)
 	specialMesh.MeshType = Enum.MeshType.Sphere
 	specialMesh.Scale = Vector3.new(0.5,0.5,3)
-	local attachment0:Attachment = Instance.new("Attachment", projectile) 
-	attachment0.Position = Vector3.new(1,0,0)
-	local attachment1:Attachment = attachment0:Clone() attachment1.Parent = projectile 
-	attachment1.Position = Vector3.new(-1,0,0)
-	local trail:Trail = Instance.new("Trail", projectile) 
+	local attachment0:Attachment = Instance.new("Attachment", projectile) -- Attachment 0 for the trail effect
+	attachment0.Position = Vector3.new(1,0,-1)
+	local attachment1:Attachment = attachment0:Clone() -- Attachment 1 for trail effect
+	attachment1.Parent = projectile 
+	attachment1.Position = Vector3.new(-1,0,-1)
+	local trail:Trail = Instance.new("Trail", projectile) -- Trail effect
 	trail.Attachment0 = attachment0 
 	trail.Attachment1 = attachment1 
 	trail.TextureMode = Enum.TextureMode.Stretch
@@ -196,28 +197,28 @@ fxTable.castSpell = function(player:Player, v1:Vector3) -- Cast function
 	trail.Transparency = NumberSequence.new(0,1)
 	trail.Color = ColorSequence.new(projectile.Color)
 	trail.LightInfluence = 0
-	for i = 0, 300, distanceInterval do task.wait(0.025)
-		local rayResult:RaycastResult = workspace:Raycast(c0.Position, c0.LookVector*distanceInterval, params)
-		if rayResult then
-			projectile.PivotOffset = CFrame.identity
-			projectile:PivotTo(CFrame.new(rayResult.Position))
-			currentSpell(rayResult.Instance.Parent, rayResult.Position) -- Humanoid check done in the spell function so we dont have to create a bunch of if/elseif's here
-			break
-		else
-			c0 *= CFrame.new(0,0,-distanceInterval)
-			projectile.PivotOffset = CFrame.new(math.random(-1,1),math.random(-1,1),0) * CFrame.Angles(0,0,math.rad(i*6))
-			projectile:PivotTo(c0)
+	for i = 0, 300, distanceInterval do task.wait(0.025) -- For loop which moves the projectile along its path
+		local rayResult:RaycastResult = workspace:Raycast(c0.Position, c0.LookVector*distanceInterval, params) -- Hit detection
+		if rayResult then -- Target acquired
+			projectile.PivotOffset = CFrame.identity -- Remove any existing pivot offset used for the chaotic path effect
+			projectile:PivotTo(CFrame.new(rayResult.Position)) -- Pivot to target
+			currentSpell(rayResult.Instance.Parent, rayResult.Position) -- Call our current spell (Humanoid check is done in the spell function as not all spells will need to hit a player  to activate, such  as explode)
+			break -- All done
+		else -- Keep movin'
+			c0 *= CFrame.new(0,0,-distanceInterval) -- Update our reference CFrame for the next loop
+			projectile.PivotOffset = CFrame.new(math.random(-1,1),math.random(-1,1),0) * CFrame.Angles(0,0,math.rad(i*3)) -- Apply a pivotOffset to create a 'chaotic' path effect rather than it being a laser
+			projectile:PivotTo(c0) -- Have to use PivotTo in order to apply the PivotOffset
 		end
 	end
-	projectile:Destroy()
+	projectile:Destroy() -- Cleanup
 end
 
 fxTable.changeSpell = function(player:Player, newSpell:string) -- Change selected spell
 	for name:string, fx in pairs(spellTable) do
-		if name == newSpell then
-			currentSpell = fx
-			currentColor = spellColors[name]
-			break
+		if name == newSpell then -- Found the spell we're tring to select
+			currentSpell = fx -- set it as the equipped spell
+			currentColor = spellColors[name] -- update our projectile colors
+			break -- early exit once we found it
 		end
 	end
 end
@@ -227,7 +228,7 @@ remote.OnServerEvent:Connect(function(player:Player, fxName:string, ...:any)
 	if fxTable[fxName] then -- Cant use variadics with pcall so we get left with an if-else check
 		fxTable[fxName](player, ...)
 	else -- Tried to call a function that doesn't exist, exploit detected
-		player:Kick("Exploiting? In this economy? That's craaaaazy") 
+		player:Kick("Exploiting? In this economy? Wack") 
 	end
 end)
 
