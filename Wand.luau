@@ -1,7 +1,7 @@
 -- Magic Wand Demo, Niveum, 2025
 -- This file contains the code for both the server and local scripts (each of which is marked below), but are kept in one file to comply with application guidelines (my bad on that first attempt)
--- The Server Script (lines 8 - 232) is 215 lines of code when ignoring comments, blank lines, & closing bracket lines for table closures
--- The Local Script (lines 236 - 340) was included for completeness (rather than to meet line requirements).
+-- The Server Script (lines 8 - 233) is 215 lines of code when ignoring comments, blank lines, & closing bracket lines for table closures
+-- The Local Script (lines 237 - 341) was included for completeness (rather than to meet line requirements).
 
 ----------{{ SERVER SCRIPT }}----------
 --// Variables \\--
